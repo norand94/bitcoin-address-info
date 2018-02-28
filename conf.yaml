@@ -1,2 +1,4 @@
 mongo_dial_url: mongodb://admin:lk1maS38@localhost:27017/admin
 mongo_db_name: admin
+
+port: ":1080"

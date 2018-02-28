@@ -1,0 +1,52 @@
+
+
+{
+   "ver":1,
+   "inputs":[
+      {
+         "sequence":4294967295,
+         "witness":"",
+         "prev_out":{
+            "spent":true,
+            "tx_index":26271960,
+            "type":0,
+            "addr":"18SnQhpNGndrz6b5cZpt8p9LYaurbcmyco",
+            "value":5094001557,
+            "n":1,
+            "script":"76a91451a92f4e915916c5ddf8b729ae666a507797bc4488ac"
+         },
+         "script":"493046022100e806ee620b80cde0a7af2512aa3582c1dd83878d3faa12dcae124ef40a70f29b0221009f92aa66122161cd0d558f7e42e212eaf26b454e14f8d77f52986aed331420b50121027d79f9dd13dff4dae697625d8e036c277f50ed1992e281d8fe111e57e4d9b818"
+      }
+   ],
+   "weight":908,
+   "block_height":235331,
+   "relayed_by":"176.31.107.89",
+   "out":[
+      {
+         "spent":true,
+         "tx_index":26272568,
+         "type":0,
+         "addr":"1EzwoHtiXB4iFwedPr49iywjZn2nnekhoj",
+         "value":16765860,
+         "n":0,
+         "script":"76a914998f169318eb1d8d2a4e53dce2712f5678c6f06e88ac"
+      },
+      {
+         "spent":true,
+         "tx_index":26272568,
+         "type":0,
+         "addr":"1LrahxBueutGLGzpDAknKczJCMLxp4FcHw",
+         "value":5077185697,
+         "n":1,
+         "script":"76a914d9cae88e57465ef383e316c0ab31deb2505d60ea88ac"
+      }
+   ],
+   "lock_time":0,
+   "size":227,
+   "double_spend":false,
+   "time":1368113433,
+   "tx_index":26272568,
+   "vin_sz":1,
+   "hash":"40d77c930caa31c7e4461779d578c8a2e0f3fecc961c55541b7a953bca269e20",
+   "vout_sz":2
+}
