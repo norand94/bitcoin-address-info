@@ -1,19 +1,20 @@
 package mongo
 
 import (
-	"github.com/norand94/bitcoin-address-info/app/config"
 	"github.com/globalsign/mgo"
+	"github.com/norand94/bitcoin-address-info/app/config"
 )
 
-const AddressInfo = "addressInfo"
+const Address = "address"
+const Block = "block"
 const ResponseCache = "responseCache"
 
 type Client struct {
 	Session *mgo.Session
-	DbName string
+	DbName  string
 }
 
-func New(conf *config.M) *Client  {
+func New(conf *config.M) *Client {
 	cli := new(Client)
 	cli.DbName = conf.MongoDbName
 
@@ -26,19 +27,18 @@ func New(conf *config.M) *Client  {
 	return cli
 }
 
-func (c *Client) NewSession() *mgo.Session  {
+func (c *Client) NewSession() *mgo.Session {
 	return c.Session.Copy()
 }
 
-func (c *Client) Exec(collection string , f func(c *mgo.Collection) error) error {
+func (c *Client) Exec(collection string, f func(c *mgo.Collection) error) error {
 	s := c.Session.Copy()
 	defer s.Close()
 	return f(s.DB(c.DbName).C(collection))
 }
 
-func (c *Client) Find(collection string, query interface{}, result interface{}) error {
+func (c *Client) FindOne(collection string, query interface{}, result interface{}) error {
 	s := c.Session.Copy()
 	defer s.Close()
-	return s.DB(c.DbName).C(collection).Find(query).All(result)
+	return s.DB(c.DbName).C(collection).Find(query).One(result)
 }
-
