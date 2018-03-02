@@ -56,6 +56,7 @@ func (w *Worker) run() {
 
 				log.Println("Done! block:", req.Height)
 				req.RespCh <- HeightDone{Blocks: blocks}
+				close(req.RespCh)
 			}
 
 		}(w.RequestCh)
