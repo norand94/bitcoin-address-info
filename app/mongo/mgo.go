@@ -6,7 +6,7 @@ import (
 )
 
 const Address = "address"
-const Block = "block"
+const Blocks = "blocks"
 const ResponseCache = "responseCache"
 
 type Client struct {
@@ -16,10 +16,10 @@ type Client struct {
 
 func New(conf *config.M) *Client {
 	cli := new(Client)
-	cli.DbName = conf.MongoDbName
+	cli.DbName = conf.Mongo.DbName
 
 	var err error
-	cli.Session, err = mgo.Dial(conf.MongoDialUrl)
+	cli.Session, err = mgo.Dial(conf.Mongo.DialUrl)
 	if err != nil {
 		panic(err)
 	}
@@ -31,14 +31,20 @@ func (c *Client) NewSession() *mgo.Session {
 	return c.Session.Copy()
 }
 
-func (c *Client) Exec(collection string, f func(c *mgo.Collection) error) error {
-	s := c.Session.Copy()
-	defer s.Close()
-	return f(s.DB(c.DbName).C(collection))
-}
-
 func (c *Client) FindOne(collection string, query interface{}, result interface{}) error {
 	s := c.Session.Copy()
 	defer s.Close()
 	return s.DB(c.DbName).C(collection).Find(query).One(result)
+}
+
+func (c *Client) Insert(collection string, doc interface{}) error {
+	return c.Exec(collection, func(col *mgo.Collection) error {
+		return col.Insert(doc)
+	})
+}
+
+func (c *Client) Exec(collection string, f func(c *mgo.Collection) error) error {
+	s := c.Session.Copy()
+	defer s.Close()
+	return f(s.DB(c.DbName).C(collection))
 }

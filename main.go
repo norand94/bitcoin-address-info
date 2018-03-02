@@ -1,14 +1,15 @@
 package main
 
 import (
-	"os"
 	"io/ioutil"
+	"os"
+
+	"github.com/norand94/bitcoin-address-info/app"
 	"github.com/norand94/bitcoin-address-info/app/config"
 	"gopkg.in/yaml.v2"
-	"github.com/norand94/bitcoin-address-info/app"
 )
 
-func main()  {
+func main() {
 	file := os.Getenv("APP_CONFIG")
 	if file == "" {
 		file = "conf.yaml"

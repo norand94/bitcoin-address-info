@@ -1,8 +1,19 @@
 package config
 
 type M struct {
-	MongoDialUrl string `yaml:"mongo_dial_url"`
-	MongoDbName string `yaml:"mongo_db_name"`
+	Mongo Mongo `yaml:"mongo"`
+	Redis Redis `yaml:"redis"`
 
 	Port string `yaml:"port"`
+}
+
+type Redis struct {
+	DbNum     string `yaml:"db_num"`
+	Address   string `yaml:"address"`
+	ExpireSec string `yaml:"expire_sec"`
+}
+
+type Mongo struct {
+	DialUrl string `yaml:"dial_url"`
+	DbName  string `yaml:"db_name"`
 }

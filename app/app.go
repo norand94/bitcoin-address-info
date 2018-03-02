@@ -2,27 +2,37 @@ package app
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/garyburd/redigo/redis"
 
 	"github.com/gin-gonic/gin"
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 	"github.com/norand94/bitcoin-address-info/app/config"
+	"github.com/norand94/bitcoin-address-info/app/models"
 	"github.com/norand94/bitcoin-address-info/app/mongo"
 )
 
 type app struct {
 	Config *config.M
 	MgoCli *mongo.Client
+	RConn  redis.Conn
 }
 
 func Run(conf *config.M) {
 	app := new(app)
 	app.Config = conf
 	app.MgoCli = mongo.New(conf)
+
+	var err error
+	app.RConn, err = redis.Dial("tcp", conf.Redis.Address)
+	if err != nil {
+		log.Fatalln("Не удалось подключиться к Redis")
+		panic(err)
+	}
 
 	r := gin.Default()
 	r.GET("/address/:address", app.addressHandler)
@@ -38,11 +48,25 @@ func (app *app) addressHandler(c *gin.Context) {
 		})
 		return
 	}
-	fmt.Println(address)
-	var addressInfo = make(map[string]interface{})
-	app.MgoCli.FindOne(mongo.Address, bson.M{"address": address}, &addressInfo)
 
-	if len(addressInfo) == 0 {
+	addrBts, err := app.RConn.Do("GET", "address:"+address)
+	if err != nil {
+		log.Println(err)
+	}
+
+	if addrBts != nil {
+		log.Println("Redis cache")
+		c.Writer.Header().Add("Content-Type", "application/json; charset=utf-8")
+		c.Writer.Write(addrBts.([]byte))
+
+		return
+	}
+
+	addressInfo := new(models.Address)
+
+	if addressInfo.Hash160 == "" {
+		log.Println("get address from api")
+
 		resp, err := http.Get("https://blockchain.info/ru/rawaddr/" + address + "?confirmations=6")
 		if err != nil {
 			errorResp(c, err)
@@ -52,70 +76,72 @@ func (app *app) addressHandler(c *gin.Context) {
 
 		dec := json.NewDecoder(resp.Body)
 
-		err = dec.Decode(&addressInfo)
+		err = dec.Decode(addressInfo)
 		if err != nil {
 			errorResp(c, err)
 			return
 		}
 
-		err = app.MgoCli.Exec(mongo.Address, func(c *mgo.Collection) error {
-			return c.Insert(addressInfo)
-		})
+		err = app.loadBlocks(addressInfo)
 		if err != nil {
 			errorResp(c, err)
 			return
 		}
-		addressInfo["source"] = "bitcoin.info"
-	} else {
-		addressInfo["source"] = "cache"
-	}
 
-	err := app.loadBlocks(&addressInfo)
-	if err != nil {
-		errorResp(c, err)
-		return
+		go func() {
+			bts, err := json.Marshal(addressInfo)
+			if err != nil {
+				log.Println(err)
+			}
+			app.RConn.Do("SET", "address:"+address, bts)
+			app.RConn.Do("EXPIRE", "address:"+address, app.Config.Redis.ExpireSec)
+		}()
+
+		addressInfo.Source = "bitcoin.info"
 	}
 
 	c.JSON(200, addressInfo)
 }
 
-func (app *app) loadBlocks(addressInfo *map[string]interface{}) error {
-	blocks := make(map[int]map[string]interface{})
+func (app *app) loadBlocks(address *models.Address) error {
+	log.Println("Load Blocks")
+	blockMap := make(map[int]*models.Blocks)
 
-	address := *addressInfo
-	txs := address["txs"].([]interface{})
-	for _, tx := range txs {
-		m := tx.(map[string]interface{})
-		blockHeight := int(m["block_height"].(float64))
+	for i := range address.Txs {
+		blockHeight := address.Txs[i].BlockHeight
+		blocks := new(models.Blocks)
 
-		if _, exists := blocks[blockHeight]; !exists {
-			block := make(map[string]interface{})
-			app.MgoCli.FindOne(mongo.Block, bson.M{"height": blockHeight}, &block)
+		if _, exists := blockMap[blockHeight]; !exists {
+			app.MgoCli.FindOne(mongo.Blocks, bson.M{"blocks.height": blockHeight}, blocks)
 
-			if len(block) == 0 {
+			if len(blocks.Blocks) == 0 {
+
 				var err error
-				block, err = getBlockFromApi(blockHeight)
+				blocks, err = getBlockFromApi(blockHeight)
 				if err != nil {
 					return err
 				}
 
-				err = app.MgoCli.Exec(mongo.Block, func(c *mgo.Collection) error {
-					return c.Insert(block)
+				err = app.MgoCli.Exec(mongo.Blocks, func(c *mgo.Collection) error {
+					return c.Insert(blocks)
 				})
 				if err != nil {
-					return err
+					log.Println(err)
 				}
+
+			} else {
+				blocks.Source = "cahce"
 			}
-			blocks[blockHeight] = block
+
+			blockMap[blockHeight] = blocks
 
 		}
-		m["block"] = blocks[blockHeight]
-
+		address.Txs[i].Blocks = blocks
 	}
 	return nil
 }
 
-func getBlockFromApi(blockHeight int) (map[string]interface{}, error) {
+func getBlockFromApi(blockHeight int) (*models.Blocks, error) {
 	log.Println("Getting block from api: ", blockHeight)
 	resp, err := http.Get("https://blockchain.info/ru/block-height/" + strconv.Itoa(blockHeight) + "?format=json")
 	if err != nil {
@@ -125,12 +151,13 @@ func getBlockFromApi(blockHeight int) (map[string]interface{}, error) {
 
 	dec := json.NewDecoder(resp.Body)
 
-	var block map[string]interface{}
-	err = dec.Decode(&block)
+	blocks := new(models.Blocks)
+	err = dec.Decode(blocks)
 	if err != nil {
 		return nil, err
 	}
-	return block, nil
+
+	return blocks, nil
 }
 
 func errorResp(c *gin.Context, err error) {

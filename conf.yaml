@@ -1,4 +1,10 @@
-mongo_dial_url: mongodb://admin:lk1maS38@localhost:27017/admin
-mongo_db_name: admin
+mongo:
+  dial_url: mongodb://admin:lk1maS38@localhost:27017/admin
+  db_name: admin
+
+redis:
+  db_num: "0"
+  address: ":6379"
+  expire_sec: "300"
 
 port: ":1080"
