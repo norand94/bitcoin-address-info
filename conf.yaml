@@ -8,3 +8,4 @@ redis:
   expire_sec: "300"
 
 port: ":1080"
+loader_routines: 16

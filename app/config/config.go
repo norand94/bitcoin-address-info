@@ -4,7 +4,8 @@ type M struct {
 	Mongo Mongo `yaml:"mongo"`
 	Redis Redis `yaml:"redis"`
 
-	Port string `yaml:"port"`
+	Port           string `yaml:"port"`
+	LoaderRoutines int    `yaml:"loader_routines"`
 }
 
 type Redis struct {

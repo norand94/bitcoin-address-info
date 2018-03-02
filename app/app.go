@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,12 +15,14 @@ import (
 	"github.com/norand94/bitcoin-address-info/app/config"
 	"github.com/norand94/bitcoin-address-info/app/models"
 	"github.com/norand94/bitcoin-address-info/app/mongo"
+	"github.com/norand94/bitcoin-address-info/app/worker"
 )
 
 type app struct {
 	Config *config.M
 	MgoCli *mongo.Client
 	RConn  redis.Conn
+	Worker *worker.Worker
 }
 
 func Run(conf *config.M) {
@@ -33,6 +36,9 @@ func Run(conf *config.M) {
 		log.Fatalln("Не удалось подключиться к Redis")
 		panic(err)
 	}
+
+	fmt.Println("Loader routines: ", conf.LoaderRoutines)
+	app.Worker = worker.New(conf.LoaderRoutines)
 
 	r := gin.Default()
 	r.GET("/address/:address", app.addressHandler)
@@ -106,6 +112,7 @@ func (app *app) addressHandler(c *gin.Context) {
 func (app *app) loadBlocks(address *models.Address) error {
 	log.Println("Load Blocks")
 	blockMap := make(map[int]*models.Blocks)
+	requests := make([]worker.Request, 0, len(address.Txs))
 
 	for i := range address.Txs {
 		blockHeight := address.Txs[i].BlockHeight
@@ -116,30 +123,44 @@ func (app *app) loadBlocks(address *models.Address) error {
 
 			if len(blocks.Blocks) == 0 {
 
-				var err error
-				blocks, err = getBlockFromApi(blockHeight)
-				if err != nil {
-					return err
+				req := worker.Request{
+					Height: blockHeight,
+					RespCh: make(chan worker.HeightDone, 1),
 				}
-
-				go func() {
-					err = app.MgoCli.Exec(mongo.Blocks, func(c *mgo.Collection) error {
-						return c.Insert(blocks)
-					})
-					if err != nil {
-						log.Println(err)
-					}
-				}()
+				app.Worker.RequestCh <- req
+				requests = append(requests, req)
 
 			} else {
 				blocks.Source = "cahce"
+				blockMap[blockHeight] = blocks
 			}
 
-			blockMap[blockHeight] = blocks
-
 		}
-		address.Txs[i].Blocks = blocks.RespBlocks()
 	}
+
+	for _, req := range requests {
+		resp := <-req.RespCh
+		if resp.Error != nil {
+			log.Println(resp.Error)
+			return resp.Error
+		}
+
+		blockMap[req.Height] = resp.Blocks
+		go func(blocks *models.Blocks) {
+			err := app.MgoCli.Exec(mongo.Blocks, func(c *mgo.Collection) error {
+				return c.Insert(blocks)
+			})
+			if err != nil {
+				log.Println(err)
+			}
+		}(resp.Blocks)
+
+	}
+
+	for i := range address.Txs {
+		address.Txs[i].Blocks = blockMap[address.Txs[i].BlockHeight].RespBlocks()
+	}
+
 	return nil
 }
 
