@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -71,8 +70,6 @@ func (app *app) addressHandler(c *gin.Context) {
 	addressInfo := new(models.Address)
 
 	if addressInfo.Hash160 == "" {
-		log.Println("get address from api")
-
 		resp, err := http.Get("https://blockchain.info/ru/rawaddr/" + address + "?confirmations=6")
 		if err != nil {
 			errorResp(c, err)
@@ -110,7 +107,6 @@ func (app *app) addressHandler(c *gin.Context) {
 }
 
 func (app *app) loadBlocks(address *models.Address) error {
-	log.Println("Load Blocks")
 	blockMap := make(map[int]*models.Blocks)
 	requests := make([]worker.Request, 0, len(address.Txs))
 
@@ -162,25 +158,6 @@ func (app *app) loadBlocks(address *models.Address) error {
 	}
 
 	return nil
-}
-
-func getBlockFromApi(blockHeight int) (*models.Blocks, error) {
-	log.Println("Getting block from api: ", blockHeight)
-	resp, err := http.Get("https://blockchain.info/ru/block-height/" + strconv.Itoa(blockHeight) + "?format=json")
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	dec := json.NewDecoder(resp.Body)
-
-	blocks := new(models.Blocks)
-	err = dec.Decode(blocks)
-	if err != nil {
-		return nil, err
-	}
-
-	return blocks, nil
 }
 
 func errorResp(c *gin.Context, err error) {
