@@ -5,6 +5,24 @@ type Blocks struct {
 	Blocks []Block `json:"blocks"`
 }
 
+func (bls *Blocks) RespBlocks() []RespBlock {
+	rbs := make([]RespBlock, 0, len(bls.Blocks))
+	for _, b := range bls.Blocks {
+		rbs = append(rbs, RespBlock{
+			Hash:   b.Hash,
+			Height: b.Height,
+			Time:   b.Time,
+		})
+	}
+	return rbs
+}
+
+type RespBlock struct {
+	Hash   string `json:"hash"`
+	Height int    `json:"height"`
+	Time   int    `json:"time"`
+}
+
 type Block struct {
 	Hash         string        `json:"hash"`
 	Ver          int           `json:"ver"`

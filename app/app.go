@@ -122,12 +122,14 @@ func (app *app) loadBlocks(address *models.Address) error {
 					return err
 				}
 
-				err = app.MgoCli.Exec(mongo.Blocks, func(c *mgo.Collection) error {
-					return c.Insert(blocks)
-				})
-				if err != nil {
-					log.Println(err)
-				}
+				go func() {
+					err = app.MgoCli.Exec(mongo.Blocks, func(c *mgo.Collection) error {
+						return c.Insert(blocks)
+					})
+					if err != nil {
+						log.Println(err)
+					}
+				}()
 
 			} else {
 				blocks.Source = "cahce"
@@ -136,7 +138,7 @@ func (app *app) loadBlocks(address *models.Address) error {
 			blockMap[blockHeight] = blocks
 
 		}
-		address.Txs[i].Blocks = blocks
+		address.Txs[i].Blocks = blocks.RespBlocks()
 	}
 	return nil
 }

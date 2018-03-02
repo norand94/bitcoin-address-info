@@ -39,13 +39,13 @@ type Transaction struct {
 		N       int    `json:"n"`
 		Script  string `json:"script"`
 	} `json:"out"`
-	LockTime int     `json:"lock_time"`
-	Result   int     `json:"result"`
-	Size     int     `json:"size"`
-	Time     int     `json:"time"`
-	TxIndex  int     `json:"tx_index"`
-	VinSz    int     `json:"vin_sz"`
-	Hash     string  `json:"hash"`
-	VoutSz   int     `json:"vout_sz"`
-	Blocks   *Blocks `json:"blocks"`
+	LockTime int         `json:"lock_time"`
+	Result   int         `json:"result"`
+	Size     int         `json:"size"`
+	Time     int         `json:"time"`
+	TxIndex  int         `json:"tx_index"`
+	VinSz    int         `json:"vin_sz"`
+	Hash     string      `json:"hash"`
+	VoutSz   int         `json:"vout_sz"`
+	Blocks   []RespBlock `json:"blocks"`
 }
