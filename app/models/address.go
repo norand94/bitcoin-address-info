@@ -9,6 +9,7 @@ type Address struct {
 	FinalBalance  int           `json:"final_balance"`
 	Txs           []Transaction `json:"txs"`
 	Source        string        `json:"source,omitempty"`
+	TxsCount      int           `json:"txs_count"`
 }
 
 type Transaction struct {

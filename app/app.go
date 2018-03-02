@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -69,21 +70,20 @@ func (app *app) addressHandler(c *gin.Context) {
 
 	addressInfo := new(models.Address)
 
-	if addressInfo.Hash160 == "" {
-		resp, err := http.Get("https://blockchain.info/ru/rawaddr/" + address + "?confirmations=6")
+	err = app.MgoCli.FindOne(mongo.Address, bson.M{"address": address}, addressInfo)
+	if err != nil && mgo.ErrNotFound.Error() != err.Error() {
+		errorResp(c, err)
+		return
+	}
+
+	if err != nil && mgo.ErrNotFound.Error() == err.Error() {
+		//Если адрес не найден в базе
+		addressInfo, err = GetAddrFromApi(address, 0)
 		if err != nil {
 			errorResp(c, err)
 			return
 		}
-		defer resp.Body.Close()
-
-		dec := json.NewDecoder(resp.Body)
-
-		err = dec.Decode(addressInfo)
-		if err != nil {
-			errorResp(c, err)
-			return
-		}
+		addressInfo.TxsCount = len(addressInfo.Txs)
 
 		err = app.loadBlocks(addressInfo)
 		if err != nil {
@@ -91,19 +91,80 @@ func (app *app) addressHandler(c *gin.Context) {
 			return
 		}
 
-		go func() {
-			bts, err := json.Marshal(addressInfo)
+		go func(addrInfo *models.Address) {
+			err := app.saveAddrInfo(addrInfo)
 			if err != nil {
-				log.Println(err)
+				log.Println("err: ", err.Error())
 			}
-			app.RConn.Do("SET", "address:"+address, bts)
-			app.RConn.Do("EXPIRE", "address:"+address, app.Config.Redis.ExpireSec)
-		}()
+		}(addressInfo)
 
-		addressInfo.Source = "bitcoin.info"
+	} else {
+		//В базе уже существует, необходимо обновить
+		inpAddr, err := GetAddrFromApi(address, addressInfo.TxsCount)
+		if err != nil {
+			errorResp(c, err)
+			return
+		}
+
+		log.Println("New transactions ", len(inpAddr.Txs), " for: ", address)
+		addressInfo.TxsCount += len(inpAddr.Txs)
+		addressInfo.Txs = append(addressInfo.Txs, inpAddr.Txs...)
+
+		err = app.loadBlocks(inpAddr)
+		if err != nil {
+			errorResp(c, err)
+			return
+		}
+		go func(addrInfo *models.Address) {
+			err := app.saveAddrInfo(addrInfo)
+			if err != nil {
+				log.Println("err: ", err.Error())
+			}
+		}(addressInfo)
 	}
 
-	c.JSON(200, addressInfo)
+	addressInfo.Source = "bitcoin.info"
+
+	c.JSON(200, addressInfo.Txs)
+}
+
+func (app *app) saveAddrInfo(addrInfo *models.Address) error {
+	bts, err := json.Marshal(addrInfo.Txs)
+	if err != nil {
+		return err
+	}
+
+	_, err = app.RConn.Do("SET", "address:"+addrInfo.Address, bts)
+	_, err = app.RConn.Do("EXPIRE", "address:"+addrInfo.Address, app.Config.Redis.ExpireSec)
+	if err != nil {
+		return err
+	}
+
+	err = app.MgoCli.Exec(mongo.Address, func(c *mgo.Collection) error {
+		_, err := c.Upsert(bson.M{"address": addrInfo.Address}, addrInfo)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetAddrFromApi(address string, offset int) (*models.Address, error) {
+	resp, err := http.Get("https://blockchain.info/ru/rawaddr/" + address + "?confirmations=6&limit=100000&offset=" + strconv.Itoa(offset))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	dec := json.NewDecoder(resp.Body)
+
+	inpAddr := new(models.Address)
+	err = dec.Decode(inpAddr)
+	if err != nil {
+		return nil, err
+	}
+	return inpAddr, nil
 }
 
 func (app *app) loadBlocks(address *models.Address) error {
@@ -165,5 +226,4 @@ func errorResp(c *gin.Context, err error) {
 	c.JSON(500, gin.H{
 		"err": err.Error(),
 	})
-	panic(err)
 }

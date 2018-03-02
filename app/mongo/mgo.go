@@ -7,7 +7,6 @@ import (
 
 const Address = "address"
 const Blocks = "blocks"
-const ResponseCache = "responseCache"
 
 type Client struct {
 	Session *mgo.Session
@@ -23,6 +22,12 @@ func New(conf *config.M) *Client {
 	if err != nil {
 		panic(err)
 	}
+
+	cli.Session.DB(conf.Mongo.DbName).C(Blocks).EnsureIndex(mgo.Index{
+		Key: []string{
+			"blocks.address",
+		},
+	})
 
 	return cli
 }
