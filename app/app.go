@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -19,10 +20,11 @@ import (
 )
 
 type app struct {
-	Config *config.M
-	MgoCli *mongo.Client
-	RConn  redis.Conn
-	Worker *worker.Worker
+	Config  *config.M
+	MgoCli  *mongo.Client
+	RConn   redis.Conn
+	Worker  *worker.Worker
+	AddrMap *addrMap
 }
 
 func Run(conf *config.M) {
@@ -44,6 +46,8 @@ func Run(conf *config.M) {
 
 	fmt.Println("Loader routines: ", conf.LoaderRoutines)
 	app.Worker = worker.New(conf.LoaderRoutines)
+
+	app.AddrMap = newAddrMap()
 
 	r := gin.Default()
 	r.GET("/address/:address", app.addressHandler)
@@ -72,6 +76,16 @@ func (app *app) addressHandler(c *gin.Context) {
 
 		return
 	}
+
+	addrTime, exists := app.AddrMap.GetOrSet(address, time.Now())
+	if exists {
+		c.JSON(200, gin.H{
+			"message":      "this address already processed",
+			"startProcess": addrTime,
+		})
+		return
+	}
+	defer app.AddrMap.Del(address)
 
 	addressInfo := new(models.Address)
 
@@ -193,6 +207,7 @@ func (app *app) loadBlocks(address *models.Address) error {
 				requests = append(requests, req)
 
 			} else {
+				log.Println("loading block from mongo")
 				blocks.Source = "cahce"
 				blockMap[blockHeight] = blocks
 			}
