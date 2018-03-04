@@ -71,12 +71,8 @@ func Run(conf *config.M) {
 
 	app.AddrMap = newAddrMap()
 
-	ginF := initLogFile(ginLog)
-	defer ginF.Close()
-	gin.DefaultWriter = ginF
-
+	gin.DefaultWriter = io.MultiWriter(os.Stdout, appF)
 	r := gin.Default()
-
 	r.GET("/address/:address", app.addressHandler)
 	app.InfoLog.Infoln("Application started")
 	r.Run(conf.Port)
