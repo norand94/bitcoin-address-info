@@ -130,11 +130,11 @@ func (app *app) addressHandler(c *gin.Context) {
 
 	addressInfo.Source = "bitcoin.info"
 
-	c.JSON(200, addressInfo.Txs)
+	c.JSON(200, addressInfo.RespAddress())
 }
 
 func (app *app) saveAddrInfo(addrInfo *models.Address) error {
-	bts, err := json.Marshal(addrInfo.Txs)
+	bts, err := json.Marshal(addrInfo.RespAddress())
 	if err != nil {
 		return err
 	}

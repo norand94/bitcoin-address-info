@@ -1,5 +1,9 @@
 package models
 
+type RespAddress struct {
+	Transactions []*RespTransaction `json:"transactions"`
+}
+
 type Address struct {
 	Hash160       string        `json:"hash160"`
 	Address       string        `json:"address"`
@@ -10,6 +14,28 @@ type Address struct {
 	Txs           []Transaction `json:"txs"`
 	Source        string        `json:"source,omitempty"`
 	TxsCount      int           `json:"txs_count"`
+}
+
+func (addr *Address) RespAddress() *RespAddress {
+	rtxs := make([]*RespTransaction, 0, len(addr.Txs))
+	for _, tx := range addr.Txs {
+		rtx := &RespTransaction{
+			Raw: &tx,
+		}
+
+		if len(tx.Blocks) >= 1 {
+			rtx.Block = &tx.Blocks[0]
+		}
+		rtxs = append(rtxs, rtx)
+	}
+	return &RespAddress{
+		Transactions: rtxs,
+	}
+}
+
+type RespTransaction struct {
+	Raw   *Transaction `json:"raw"`
+	Block *RespBlock   `json:"block"`
 }
 
 type Transaction struct {
