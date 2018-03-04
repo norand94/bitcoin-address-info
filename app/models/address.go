@@ -20,7 +20,7 @@ func (addr *Address) RespAddress() *RespAddress {
 	rtxs := make([]*RespTransaction, 0, len(addr.Txs))
 	for _, tx := range addr.Txs {
 		rtx := &RespTransaction{
-			Raw: &tx,
+			Raw: tx.Hash,
 		}
 
 		if len(tx.Blocks) >= 1 {
@@ -34,8 +34,8 @@ func (addr *Address) RespAddress() *RespAddress {
 }
 
 type RespTransaction struct {
-	Raw   *Transaction `json:"raw"`
-	Block *RespBlock   `json:"block"`
+	Raw   string     `json:"raw"`
+	Block *RespBlock `json:"block"`
 }
 
 type Transaction struct {
