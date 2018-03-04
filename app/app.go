@@ -2,9 +2,9 @@ package app
 
 import (
 	"encoding/json"
-	"fmt"
-	"log"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/norand94/bitcoin-address-info/app/models"
 	"github.com/norand94/bitcoin-address-info/app/mongo"
 	"github.com/norand94/bitcoin-address-info/app/worker"
+	"github.com/sirupsen/logrus"
 )
 
 type app struct {
@@ -25,32 +26,59 @@ type app struct {
 	RConn   redis.Conn
 	Worker  *worker.Worker
 	AddrMap *addrMap
+	InfoLog *logrus.Logger
+	ErrLog  *logrus.Logger
 }
+
+const ginLog = "bitcoin.gin.log"
+const infoLog = "bitcoin.info.log"
+const errLog = "bitcoin.err.log"
 
 func Run(conf *config.M) {
 	app := new(app)
 	app.Config = conf
-	app.MgoCli = mongo.New(conf)
+
+	appF := initLogFile(infoLog)
+	defer appF.Close()
+	app.InfoLog = logrus.New()
+	app.InfoLog.Out = io.MultiWriter(appF, os.Stdout)
+	app.InfoLog.Formatter = &logrus.TextFormatter{}
+
+	errF := initLogFile(errLog)
+	defer errF.Close()
+	app.ErrLog = logrus.New()
+	app.ErrLog.Out = io.MultiWriter(errF, appF, os.Stderr)
+	app.InfoLog.Formatter = &logrus.TextFormatter{}
+
+	app.InfoLog.Infoln("Application initializing")
 
 	var err error
 	app.RConn, err = redis.Dial("tcp", conf.Redis.Address)
 	if err != nil {
-		log.Fatalln("Не удалось подключиться к Redis: ", err.Error())
+		app.ErrLog.Errorln("Не удалось подключиться к Redis: ", err.Error())
 	}
 
 	resp, err := app.RConn.Do("AUTH", conf.Redis.Password)
 	if err != nil {
-		log.Fatalln("Не удалось подключиться к Redis: ", err.Error())
+		app.ErrLog.Errorln("Не удалось подключиться к Redis: ", err.Error())
 	}
-	log.Println("REDIS: ", resp)
+	app.InfoLog.WithField("RedisResponse", resp)
 
-	fmt.Println("Loader routines: ", conf.LoaderRoutines)
-	app.Worker = worker.New(conf.LoaderRoutines)
+	app.MgoCli = mongo.New(conf)
+
+	app.InfoLog.WithField("LoaderRoutinesCount", conf.LoaderRoutines)
+	app.Worker = worker.New(conf.LoaderRoutines, app.InfoLog)
 
 	app.AddrMap = newAddrMap()
 
+	ginF := initLogFile(ginLog)
+	defer ginF.Close()
+	gin.DefaultWriter = ginF
+
 	r := gin.Default()
+
 	r.GET("/address/:address", app.addressHandler)
+	app.InfoLog.Infoln("Application started")
 	r.Run(conf.Port)
 }
 
@@ -66,14 +94,13 @@ func (app *app) addressHandler(c *gin.Context) {
 
 	addrBts, err := app.RConn.Do("GET", "address:"+address)
 	if err != nil {
-		log.Println(err)
+		app.ErrLog.Errorln(err)
 	}
 
 	if addrBts != nil {
-		log.Println("Redis cache")
+		app.InfoLog.Info("Loaded address", address, "from redis cache")
 		c.Writer.Header().Add("Content-Type", "application/json; charset=utf-8")
 		c.Writer.Write(addrBts.([]byte))
-
 		return
 	}
 
@@ -91,7 +118,7 @@ func (app *app) addressHandler(c *gin.Context) {
 
 	err = app.MgoCli.FindOne(mongo.Address, bson.M{"address": address}, addressInfo)
 	if err != nil && mgo.ErrNotFound.Error() != err.Error() {
-		errorResp(c, err)
+		app.errorResp(c, err)
 		return
 	}
 
@@ -99,21 +126,21 @@ func (app *app) addressHandler(c *gin.Context) {
 		//Если адрес не найден в базе
 		addressInfo, err = GetAddrFromApi(address, 0)
 		if err != nil {
-			errorResp(c, err)
+			app.errorResp(c, err)
 			return
 		}
 		addressInfo.TxsCount = len(addressInfo.Txs)
 
 		err = app.loadBlocks(addressInfo)
 		if err != nil {
-			errorResp(c, err)
+			app.errorResp(c, err)
 			return
 		}
 
 		go func(addrInfo *models.Address) {
 			err := app.saveAddrInfo(addrInfo)
 			if err != nil {
-				log.Println("err: ", err.Error())
+				app.ErrLog.Errorln(err)
 			}
 		}(addressInfo)
 
@@ -121,23 +148,23 @@ func (app *app) addressHandler(c *gin.Context) {
 		//В базе уже существует, необходимо обновить
 		inpAddr, err := GetAddrFromApi(address, addressInfo.TxsCount)
 		if err != nil {
-			errorResp(c, err)
+			app.errorResp(c, err)
 			return
 		}
 
-		log.Println("New transactions ", len(inpAddr.Txs), " for: ", address)
+		app.InfoLog.Infoln("New transactions ", len(inpAddr.Txs), " for: ", address)
 		addressInfo.TxsCount += len(inpAddr.Txs)
 		addressInfo.Txs = append(addressInfo.Txs, inpAddr.Txs...)
 
 		err = app.loadBlocks(inpAddr)
 		if err != nil {
-			errorResp(c, err)
+			app.errorResp(c, err)
 			return
 		}
 		go func(addrInfo *models.Address) {
 			err := app.saveAddrInfo(addrInfo)
 			if err != nil {
-				log.Println("err: ", err.Error())
+				app.ErrLog.Errorln(err)
 			}
 		}(addressInfo)
 	}
@@ -207,7 +234,7 @@ func (app *app) loadBlocks(address *models.Address) error {
 				requests = append(requests, req)
 
 			} else {
-				log.Println("loading block from mongo")
+				app.InfoLog.Infoln("loading block ", blockHeight, " from mongo")
 				blocks.Source = "cahce"
 				blockMap[blockHeight] = blocks
 			}
@@ -218,7 +245,6 @@ func (app *app) loadBlocks(address *models.Address) error {
 	for _, req := range requests {
 		resp := <-req.RespCh
 		if resp.Error != nil {
-			log.Println(resp.Error)
 			return resp.Error
 		}
 
@@ -228,7 +254,7 @@ func (app *app) loadBlocks(address *models.Address) error {
 				return c.Insert(blocks)
 			})
 			if err != nil {
-				log.Println(err)
+				app.ErrLog.Errorln(err)
 			}
 		}(resp.Blocks)
 
@@ -241,8 +267,8 @@ func (app *app) loadBlocks(address *models.Address) error {
 	return nil
 }
 
-func errorResp(c *gin.Context, err error) {
-	log.Println(err)
+func (app *app) errorResp(c *gin.Context, err error) {
+	app.ErrLog.Errorln(err)
 	c.JSON(500, gin.H{
 		"err": err.Error(),
 	})

@@ -2,16 +2,17 @@ package worker
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/norand94/bitcoin-address-info/app/models"
+	"github.com/sirupsen/logrus"
 )
 
 type Worker struct {
 	RequestCh      chan Request
 	loaderRoutines int
+	InfoLog        *logrus.Logger
 }
 
 type Request struct {
@@ -24,10 +25,11 @@ type HeightDone struct {
 	Error  error
 }
 
-func New(loaderRoutines int) *Worker {
+func New(loaderRoutines int, logger *logrus.Logger) *Worker {
 	w := &Worker{
 		RequestCh:      make(chan Request, 100),
 		loaderRoutines: loaderRoutines,
+		InfoLog:        logger,
 	}
 	go w.run()
 	return w
@@ -35,11 +37,11 @@ func New(loaderRoutines int) *Worker {
 
 func (w *Worker) run() {
 	for i := 0; i < w.loaderRoutines; i++ {
-		go func(ch <-chan Request) {
+		go func(ch <-chan Request, l *logrus.Logger) {
 			for {
 				req := <-ch
 
-				log.Println("Getting block from api: ", req.Height)
+				l.Infoln("Getting block from api: ", req.Height)
 				resp, err := http.Get("https://blockchain.info/ru/block-height/" + strconv.Itoa(req.Height) + "?format=json")
 				if err != nil {
 					req.RespCh <- HeightDone{Error: err}
@@ -54,12 +56,12 @@ func (w *Worker) run() {
 					req.RespCh <- HeightDone{Error: err}
 				}
 
-				log.Println("Done! block:", req.Height)
+				l.Infoln("Done! block:", req.Height)
 				req.RespCh <- HeightDone{Blocks: blocks}
 				close(req.RespCh)
 			}
 
-		}(w.RequestCh)
+		}(w.RequestCh, w.InfoLog)
 	}
 
 }
