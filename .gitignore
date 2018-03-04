@@ -2,3 +2,4 @@
 /.idea
 /redis_data/*
 /.vscode
+/conf.yaml

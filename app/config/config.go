@@ -12,6 +12,7 @@ type Redis struct {
 	DbNum     string `yaml:"db_num"`
 	Address   string `yaml:"address"`
 	ExpireSec string `yaml:"expire_sec"`
+	Password  string `yaml:"password"`
 }
 
 type Mongo struct {

@@ -33,9 +33,14 @@ func Run(conf *config.M) {
 	var err error
 	app.RConn, err = redis.Dial("tcp", conf.Redis.Address)
 	if err != nil {
-		log.Fatalln("Не удалось подключиться к Redis")
-		panic(err)
+		log.Fatalln("Не удалось подключиться к Redis: ", err.Error())
 	}
+
+	resp, err := app.RConn.Do("AUTH", conf.Redis.Password)
+	if err != nil {
+		log.Fatalln("Не удалось подключиться к Redis: ", err.Error())
+	}
+	log.Println("REDIS: ", resp)
 
 	fmt.Println("Loader routines: ", conf.LoaderRoutines)
 	app.Worker = worker.New(conf.LoaderRoutines)
