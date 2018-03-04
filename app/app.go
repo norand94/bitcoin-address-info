@@ -94,7 +94,7 @@ func (app *app) addressHandler(c *gin.Context) {
 	}
 
 	if addrBts != nil {
-		app.InfoLog.Info("Loaded address", address, "from redis cache")
+		app.InfoLog.Info("Loaded address ", address, " from redis cache")
 		c.Writer.Header().Add("Content-Type", "application/json; charset=utf-8")
 		c.Writer.Write(addrBts.([]byte))
 		return
